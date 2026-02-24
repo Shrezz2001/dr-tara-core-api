@@ -18,25 +18,83 @@ const groq = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
 });
 
+let productsCache = [];
+
+/* =============================
+   PRODUCT SYNC FROM WORDPRESS
+============================= */
+async function syncProducts() {
+  try {
+    let page = 1;
+    let allProducts = [];
+
+    while (true) {
+      const response = await axios.get(
+        `https://tshealthstore.com/wp-json/wp/v2/product?per_page=100&page=${page}`
+      );
+
+      if (!response.data.length) break;
+
+      allProducts = allProducts.concat(response.data);
+      page++;
+    }
+
+    productsCache = allProducts.map((p) => ({
+      id: p.id,
+      title: p.title.rendered,
+      content: p.content.rendered.replace(/<[^>]*>?/gm, ""),
+      link: p.link,
+    }));
+
+    console.log(`✅ Synced ${productsCache.length} products`);
+  } catch (error) {
+    console.error("Product sync failed:", error);
+  }
+}
+
+/* =============================
+   AUTO SYNC ON SERVER START
+============================= */
+syncProducts();
+
+/* =============================
+   TELEGRAM WEBHOOK
+============================= */
 app.post("/webhook", async (req, res) => {
   try {
     const message = req.body.message;
-
-    if (!message || !message.text) {
-      return res.sendStatus(200);
-    }
+    if (!message || !message.text) return res.sendStatus(200);
 
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // AI Response
+    /* =============================
+       SIMPLE PRODUCT MATCH
+    ============================= */
+    let relevantProducts = [];
+
+    if (productsCache.length > 0) {
+      const lowerQuery = userText.toLowerCase();
+
+      relevantProducts = productsCache.filter((p) =>
+        p.title.toLowerCase().includes(lowerQuery)
+      ).slice(0, 3);
+    }
+
+    /* =============================
+       AI RESPONSE
+    ============================= */
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [
         {
           role: "system",
           content:
-            "You are Dr Tara AI, the official assistant of TS Healthstore & Surgicals in Bengaluru. Speak warmly, professionally, and under 80 words. Encourage users to call +91 63649 10455 if needed.",
+            "You are Dr Tara AI of TS Healthstore & Surgicals in Bengaluru. Use provided product data if relevant. Speak warmly and under 80 words. Encourage calling +91 63649 10455 if needed.",
+        },
+        {
+          role: "system",
+          content: `Relevant products: ${JSON.stringify(relevantProducts)}`,
         },
         {
           role: "user",
@@ -46,12 +104,11 @@ app.post("/webhook", async (req, res) => {
     });
 
     const reply = completion.choices[0].message.content;
+    if (!reply) return res.sendStatus(200);
 
-    if (!reply) {
-      return res.sendStatus(200);
-    }
-
-    // Convert to Voice
+    /* =============================
+       CONVERT TO VOICE
+    ============================= */
     const filePath = "voice.mp3";
     const tts = new gTTS(reply, "en");
 
@@ -70,18 +127,20 @@ app.post("/webhook", async (req, res) => {
     fs.unlinkSync(filePath);
 
     res.sendStatus(200);
-
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Webhook error:", error);
     res.sendStatus(200);
   }
 });
 
+/* =============================
+   HEALTH CHECK
+============================= */
 app.get("/", (req, res) => {
-  res.send("Dr Tara Voice Core API Running.");
+  res.send("Dr Tara Voice AI running with Website Knowledge.");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
