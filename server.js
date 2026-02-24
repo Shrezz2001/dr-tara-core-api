@@ -27,7 +27,7 @@ app.post("/webhook", async (req, res) => {
     const userText = message.text;
 
     /* =============================
-       FAST AI RESPONSE (Short + Lean)
+       FAST + LOCATION LOCKED
     ============================= */
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
@@ -37,7 +37,7 @@ app.post("/webhook", async (req, res) => {
         {
           role: "system",
           content:
-            "You are Dr Tara from TS Healthstore. Reply in under 25 words. Use short, natural sentences.",
+            "You are Dr Tara from TS Healthstore & Surgicals in Bengaluru, India. Never mention any other city or country. Speak clearly. Use short natural sentences. Reply under 25 words.",
         },
         {
           role: "user",
@@ -52,7 +52,7 @@ app.post("/webhook", async (req, res) => {
     /* =============================
        QUICK TTS
     ============================= */
-    const filePath = "fast.mp3";
+    const filePath = "voice.mp3";
     const tts = new gTTS(reply, "en");
 
     await new Promise((resolve) => {
