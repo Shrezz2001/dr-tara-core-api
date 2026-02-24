@@ -52,9 +52,6 @@ async function syncProducts() {
   }
 }
 
-/* =============================
-   AUTO SYNC ON SERVER START
-============================= */
 syncProducts();
 
 /* =============================
@@ -77,12 +74,12 @@ app.post("/webhook", async (req, res) => {
       const lowerQuery = userText.toLowerCase();
 
       relevantProducts = productsCache.filter((p) =>
-        p.title.toLowerCase().includes(lowerQuery)
+        lowerQuery.includes(p.title.toLowerCase())
       ).slice(0, 3);
     }
 
     /* =============================
-       AI RESPONSE
+       AI RESPONSE (Improved Tone)
     ============================= */
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
@@ -90,11 +87,11 @@ app.post("/webhook", async (req, res) => {
         {
           role: "system",
           content:
-            "You are Dr Tara AI of TS Healthstore & Surgicals in Bengaluru. Use provided product data if relevant. Speak warmly and under 80 words. Encourage calling +91 63649 10455 if needed.",
+            "You are Dr Tara, a warm and confident medical assistant from TS Healthstore in Bengaluru. Speak clearly and naturally. Use short sentences. Avoid long paragraphs. Sound calm and caring. Keep replies under 50 words. Be practical and helpful.",
         },
         {
           role: "system",
-          content: `Relevant products: ${JSON.stringify(relevantProducts)}`,
+          content: `Relevant products from website: ${JSON.stringify(relevantProducts)}`,
         },
         {
           role: "user",
@@ -127,6 +124,7 @@ app.post("/webhook", async (req, res) => {
     fs.unlinkSync(filePath);
 
     res.sendStatus(200);
+
   } catch (error) {
     console.error("Webhook error:", error);
     res.sendStatus(200);
