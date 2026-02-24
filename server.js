@@ -1,6 +1,9 @@
 import express from "express";
 import axios from "axios";
 import OpenAI from "openai";
+import gTTS from "gtts";
+import fs from "fs";
+import FormData from "form-data";
 
 const app = express();
 app.use(express.json());
@@ -15,8 +18,7 @@ const groq = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
 });
 
-// Webhook endpoint
-app.post(`/webhook`, async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const message = req.body.message;
 
@@ -27,13 +29,14 @@ app.post(`/webhook`, async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
+    // AI Response
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [
         {
           role: "system",
           content:
-            "You are Dr Tara AI, the official assistant of TS Healthstore & Surgicals in Bengaluru. Speak warmly, professionally, and under 80 words.",
+            "You are Dr Tara AI, the official assistant of TS Healthstore & Surgicals in Bengaluru. Speak warmly, professionally, and under 80 words. Encourage users to call +91 63649 10455 if needed.",
         },
         {
           role: "user",
@@ -44,20 +47,38 @@ app.post(`/webhook`, async (req, res) => {
 
     const reply = completion.choices[0].message.content;
 
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: chatId,
-      text: reply,
+    if (!reply) {
+      return res.sendStatus(200);
+    }
+
+    // Convert to Voice
+    const filePath = "voice.mp3";
+    const tts = new gTTS(reply, "en");
+
+    await new Promise((resolve) => {
+      tts.save(filePath, resolve);
     });
 
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("voice", fs.createReadStream(filePath));
+
+    await axios.post(`${TELEGRAM_API}/sendVoice`, form, {
+      headers: form.getHeaders(),
+    });
+
+    fs.unlinkSync(filePath);
+
     res.sendStatus(200);
+
   } catch (error) {
-    console.error(error);
+    console.error("Error:", error);
     res.sendStatus(200);
   }
 });
 
 app.get("/", (req, res) => {
-  res.send("Dr Tara Core API is running.");
+  res.send("Dr Tara Voice Core API Running.");
 });
 
 const PORT = process.env.PORT || 3000;
