@@ -26,9 +26,6 @@ app.post("/webhook", async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    /* =============================
-       FAST + LOCATION LOCKED
-    ============================= */
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       max_tokens: 80,
@@ -37,7 +34,7 @@ app.post("/webhook", async (req, res) => {
         {
           role: "system",
           content:
-            "You are Dr Tara from TS Healthstore & Surgicals in Bengaluru, India. Never mention any other city or country. Speak clearly. Use short natural sentences. Reply under 25 words.",
+            "You are Dr Tara from TS Healthstore & Surgicals. The store is located in Sahakarnagara, Bengaluru, opposite Trio World School. Never mention any other location. Speak clearly, warmly, and professionally. Use short natural sentences. Keep replies under 25 words.",
         },
         {
           role: "user",
@@ -49,9 +46,6 @@ app.post("/webhook", async (req, res) => {
     const reply = completion.choices[0].message.content;
     if (!reply) return res.sendStatus(200);
 
-    /* =============================
-       QUICK TTS
-    ============================= */
     const filePath = "voice.mp3";
     const tts = new gTTS(reply, "en");
 
