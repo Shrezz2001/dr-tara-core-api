@@ -11,6 +11,11 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
+if (!TELEGRAM_TOKEN || !GROQ_API_KEY) {
+  console.error("❌ Missing environment variables.");
+  process.exit(1);
+}
+
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
 const groq = new OpenAI({
@@ -21,7 +26,7 @@ const groq = new OpenAI({
 let productsCache = [];
 
 /* =============================
-   PRODUCT SYNC FROM WORDPRESS
+   SYNC PRODUCTS FROM WORDPRESS
 ============================= */
 async function syncProducts() {
   try {
@@ -48,7 +53,7 @@ async function syncProducts() {
 
     console.log(`✅ Synced ${productsCache.length} products`);
   } catch (error) {
-    console.error("Product sync failed:", error);
+    console.error("❌ Product sync failed:", error.message);
   }
 }
 
@@ -65,33 +70,33 @@ app.post("/webhook", async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    /* =============================
+    /* -----------------------------
        SIMPLE PRODUCT MATCH
-    ============================= */
+    ----------------------------- */
     let relevantProducts = [];
 
     if (productsCache.length > 0) {
       const lowerQuery = userText.toLowerCase();
 
       relevantProducts = productsCache.filter((p) =>
-        lowerQuery.includes(p.title.toLowerCase())
+        p.title.toLowerCase().includes(lowerQuery)
       ).slice(0, 3);
     }
 
-    /* =============================
-       AI RESPONSE (Improved Tone)
-    ============================= */
+    /* -----------------------------
+       AI RESPONSE
+    ----------------------------- */
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [
         {
           role: "system",
           content:
-            "You are Dr Tara, a warm and confident medical assistant from TS Healthstore in Bengaluru. Speak clearly and naturally. Use short sentences. Avoid long paragraphs. Sound calm and caring. Keep replies under 50 words. Be practical and helpful.",
+            "You are Dr Tara from TS Healthstore in Bengaluru. Speak clearly and warmly. Use short natural sentences. Keep responses under 50 words. If relevant product data is provided, use it.",
         },
         {
           role: "system",
-          content: `Relevant products from website: ${JSON.stringify(relevantProducts)}`,
+          content: `Relevant products: ${JSON.stringify(relevantProducts)}`,
         },
         {
           role: "user",
@@ -103,30 +108,35 @@ app.post("/webhook", async (req, res) => {
     const reply = completion.choices[0].message.content;
     if (!reply) return res.sendStatus(200);
 
-    /* =============================
-       CONVERT TO VOICE
-    ============================= */
-    const filePath = "voice.mp3";
+    /* -----------------------------
+       TEXT TO SPEECH (MP3)
+    ----------------------------- */
+    const filePath = "response.mp3";
     const tts = new gTTS(reply, "en");
 
-    await new Promise((resolve) => {
-      tts.save(filePath, resolve);
+    await new Promise((resolve, reject) => {
+      tts.save(filePath, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
     });
 
+    /* -----------------------------
+       SEND AUDIO (Stable Method)
+    ----------------------------- */
     const form = new FormData();
     form.append("chat_id", chatId);
-    form.append("voice", fs.createReadStream(filePath));
+    form.append("audio", fs.createReadStream(filePath));
 
-    await axios.post(`${TELEGRAM_API}/sendVoice`, form, {
+    await axios.post(`${TELEGRAM_API}/sendAudio`, form, {
       headers: form.getHeaders(),
     });
 
     fs.unlinkSync(filePath);
 
     res.sendStatus(200);
-
   } catch (error) {
-    console.error("Webhook error:", error);
+    console.error("❌ Webhook error:", error.message);
     res.sendStatus(200);
   }
 });
@@ -135,7 +145,7 @@ app.post("/webhook", async (req, res) => {
    HEALTH CHECK
 ============================= */
 app.get("/", (req, res) => {
-  res.send("Dr Tara Voice AI running with Website Knowledge.");
+  res.send("Dr Tara Voice AI running.");
 });
 
 const PORT = process.env.PORT || 3000;
